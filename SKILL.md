@@ -1,285 +1,129 @@
 ---
 name: publish-to-clawhub
 description: |
-  Publishes an OpenClaw skill to GitHub and ClawHub. Handles English internationalization, proprietary reference removal, and ClawHub CLI publishing.
+  Prepare and publish an OpenClaw skill to GitHub and ClawHub, including English cleanup, sensitive-content review, Git setup, and publish checks.
 
-  **When to Use This Skill**:
-  - User asks to "publish a skill", "put on ClawHub", "release to GitHub and ClawHub"
-  - User completed developing a skill and wants to share it publicly
-  - User has a Chinese-language skill and wants to internationalize it first
-
-  **Prerequisites**:
-  - The skill folder must exist locally at `~/.openclaw/workspace/skills/<skill-name>/`
-  - GitHub account with an empty repo created manually at github.com
-  - ClawHub CLI installed (`npm i -g clawhub`) and logged in
-
+  Use this skill when the user wants to release a skill publicly, sync a local skill to GitHub, internationalize a Chinese skill before publishing, or publish to ClawHub with a safer and more repeatable workflow.
 ---
 
-# ⚠️ Security & Risk Notes (Read First)
+# Publish To ClawHub
 
-This skill handles two sensitive areas: GitHub credential entry and git history rewriting.
+Use this skill when a local skill is ready to be cleaned up and released.
 
-## Risk Summary
+Typical requests:
 
-| Risk | Level | Mitigation |
-|------|-------|------------|
-| GitHub credential entry | 🟡 MEDIUM | User enters PAT manually; never stored or logged |
-| Git history rewrite | 🟡 MEDIUM | Always warns user before executing; can be skipped |
-| Credential exfiltration | 🟢 LOW | PAT only used for git push; never sent to third parties |
-| Arbitrary code execution | 🟢 LOW | Only modifies files within the skill directory |
+- "Publish this skill to ClawHub."
+- "Help me put this skill on GitHub and ClawHub."
+- "Convert this skill to English and prepare it for release."
 
-## Why This Skill Requires Caution
+## Safety First
 
-Publishing a skill to GitHub + ClawHub inherently involves:
-1. Pushing code to a remote GitHub repo (requires credentials)
-2. Rebuilding clean git history (rewrites commit history)
+This workflow can involve:
 
-These operations are flagged by automated security scanners — this is normal behavior for any skill that touches GitHub credentials or performs history rewriting.
+- GitHub authentication
+- git push to a public remote
+- optional history rewriting
+- ClawHub CLI publishing
 
-## What This Skill Does NOT Do
+Rules:
 
-- ❌ Does NOT store GitHub PAT anywhere after the operation ends
-- ❌ Does NOT send credentials to any server other than GitHub
-- ❌ Does NOT access files outside the skill directory being published
-- ❌ Does NOT use base64, eval, or obfuscated code
-- ❌ Does NOT install packages or modify system configuration
+- never ask the user to paste a long-lived token into chat unless there is no safer option
+- prefer browser login, credential manager, or SSH when available
+- never store credentials in files
+- never force-push without explicit user confirmation
 
-## Secure Workflow
+## Prerequisites
 
-```
-1. Analyze & clean skill files (safe — local only)
-         ↓
-2. English-ize content (safe — local only)
-         ↓
-3. Remove proprietary references (safe — local only)
-         ↓
-4. GitHub push: USER manually enters PAT or uses SSH key (credential never given to agent)
-         ↓
-5. ClawHub publish via CLI (uses ClawHub auth, not GitHub PAT)
-```
+Confirm these before publishing:
 
----
+- the skill exists locally
+- `SKILL.md` is present
+- GitHub repo target is known or will be created
+- ClawHub CLI is installed and logged in if ClawHub publishing is required
 
-# Publish OpenClaw Skill to GitHub + ClawHub
+Detailed checks are in [references/publish-checklist.md](./references/publish-checklist.md).
 
-## Step 1 — Analyze Existing Skill
+## Workflow
 
-**Goal**: Understand the current state of the skill before publishing.
+### 1. Inspect The Skill
 
-Inspect these for Chinese content and proprietary references:
-- `SKILL.md` — main description and instructions
-- `README.md` — user-facing documentation
-- `scripts/*.py` — code comments and docstrings
-- `notebooks/*.ipynb` — Colab notebooks
+Review the skill folder for:
 
-```bash
-# Find all files
-find ~/.openclaw/workspace/skills/<skill-name>/ -type f
+- non-English content that should be internationalized
+- private or proprietary references
+- user-specific file paths
+- tokens, emails, or placeholders that should not be published
 
-# Scan for Chinese characters
-grep -rni "[\u4e00-\u9fff]" ~/.openclaw/workspace/skills/<skill-name>/ --include="*.md" --include="*.py"
+Check `SKILL.md`, scripts, notebooks, and any user-facing documentation that will ship with the repo.
 
-# Scan for proprietary placeholders (customize per skill)
-grep -rni "ND646\|ACC\|AccA\|AccB\|AccD\|PROPRIETARY\|YOUR_KEY\|YOUR_TOKEN" \
-  ~/.openclaw/workspace/skills/<skill-name>/
-```
+### 2. Normalize Public-Facing Content
 
----
+Before publishing:
 
-## Step 2 — English-ize SKILL.md
+- convert the skill description and instructions to clear English if the goal is public distribution
+- replace proprietary names with generic placeholders when needed
+- remove secrets, personal addresses, and private identifiers
+- make examples understandable to an outside user
 
-**Rule**: SKILL.md is the **AI-facing entry point** — it defines how the AI uses the skill. Must be in English.
+Keep `SKILL.md` focused on how the AI should use the skill, not on project history.
 
-Rewrite the `description` field and all markdown content in English:
-- Description field → English description
-- Chinese comments → English comments
-- Example values → Generic placeholders (e.g., `Drug_Candidate`, `Bacterial_Protein`)
+### 3. Prepare GitHub Publishing
 
-**SKILL.md description template**:
-```yaml
----
-name: <skill-name>
-description: |
-  <One-line English summary>
+If the repo does not exist yet:
 
-  **Use Cases**:
-  - <Scenario 1>
-  - <Scenario 2>
+- ask the user to create an empty GitHub repo or create one through their preferred GitHub workflow
+- prefer an empty remote to avoid unnecessary merge conflicts
 
-  **When to Use This Skill**:
-  - User mentions "<keyword>"
-  - User wants to "<action>"
----
-```
+Then:
 
----
+- initialize git if needed
+- set the remote
+- stage files deliberately
+- review what is about to be published
+- create a clear initial commit
 
-## Step 3 — Remove Proprietary References
+Use SSH or a local credential helper when possible. HTTPS with manual login is acceptable if needed.
 
-**Common patterns to search and replace**:
+### 4. Push Safely
 
-| Pattern | Replace With | Reason |
-|---------|-------------|--------|
-| Real drug names (ND646, etc.) | `Drug_Candidate` | Generic placeholder |
-| Real protein names (AccA, AccD, etc.) | `ChainA`, `ChainB` | Generic placeholder |
-| Real species (E.coli, human ACC1) | `Bacterial_Target`, `Human_Target` | Generic placeholder |
-| Specific file paths with real names | `human_target.fasta`, `bacterial_target.fasta` | Generic |
-| Personal tokens / keys | `YOUR_TOKEN_HERE` | Security |
-| Email addresses in code | Remove or use `example.com` | Privacy |
-| Chinese comments in scripts | English equivalents | International audience |
+Before pushing:
 
-**Always do a final sweep before committing**:
-```bash
-grep -rni "ND646\|AccA\|AccB\|AccD\|PROPRIETARY\|YOUR_KEY" \
-  ~/.openclaw/workspace/skills/<skill-name>/ \
-  --include="*.py" --include="*.md" --include="*.ipynb"
-# Must return zero matches before proceeding
-```
+- confirm the remote is the intended repository
+- confirm that no secrets or proprietary files are staged
+- explain clearly if the push will make the repo public
 
----
+Never run `git push -f` unless the user explicitly agrees after understanding the risk.
 
-## Step 4 — GitHub: Init + Push
+### 5. Publish To ClawHub
 
-### 4.1 User creates empty repo on GitHub Web (manual)
+If the user wants ClawHub publication:
 
-Ask the user to:
-1. Go to https://github.com/new
-2. Create repo with same name as skill (e.g., `openclaw-<skill-name>`)
-3. **Do NOT** check "Add a README" (local files will conflict)
-4. Check "Add .gitignore → Python" (recommended)
-5. Check "Add license → MIT" (recommended)
-6. Copy the repo URL
+- verify the CLI is installed
+- verify login status
+- run the publish command with a clear version and changelog
+- confirm the published page or package identifier afterward
 
-### 4.2 Initialize and push
+### 6. Report What Happened
 
-```bash
-SKILL_DIR=~/.openclaw/workspace/skills/<skill-name>
-cd $SKILL_DIR
+Summarize:
 
-# Initialize git (only if not already a git repo)
-git init
+- what files were cleaned or changed
+- whether GitHub push succeeded
+- whether ClawHub publish succeeded
+- any follow-up steps still needed from the user
 
-# Configure user (needed for new repos)
-git config user.email "user@example.com"
-git config user.name "GitHub Username"
+## Decision Rules
 
-# Add remote — USE SSH URL TO AVOID TOKEN PROMPT:
-# git remote add origin git@github.com:USER/repo.git
-# OR use HTTPS and enter token manually when prompted:
-git remote add origin https://github.com/USER/repo.git
+- If the skill is still private or contains sensitive material, stop before publishing.
+- If the user only wants GitHub backup, skip ClawHub publishing.
+- If ClawHub CLI is missing, explain the blocker and continue with GitHub prep if useful.
+- If the remote repo already contains conflicting starter files, resolve carefully rather than overwriting blindly.
 
-# Stage all files
-git add -A
-git status  # Verify correct files are staged
+## Common Failure Modes
 
-# Commit
-git commit -m "Initial release: <Skill Name> (OpenClaw Skill)
+Use [references/publish-checklist.md](./references/publish-checklist.md) for:
 
-- English-only, generic examples
-- <Brief feature list>
-- SKILL.md: OpenClaw skill definition
-- README.md: GitHub-ready documentation"
-
-# Push — user enters credentials manually when prompted
-# For SSH: ssh-agent handles authentication (recommended)
-# For HTTPS: Git credential helper or manual token entry
-git push -u origin main
-```
-
-### 4.3 Rebuild clean git history (OPTIONAL — user decision)
-
-**⚠️ WARNING: This operation rewrites local commit history. It does NOT automatically force-push.**
-
-Only do this if the repo has messy/old commits with sensitive content.
-
-```bash
-cd $SKILL_DIR
-
-# Check current commit count
-git log --oneline | wc -l  # if = 1, skip this step
-
-# Identify the first commit
-FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-
-# Squash all commits into one clean commit (local only)
-git reset --soft $FIRST_COMMIT
-git commit -m "Initial release: <Skill Name> (OpenClaw Skill)
-
-- English-only, generic examples
-- <Feature summary>
-- LICENSE: MIT"
-
-# NOW push — this is a force-push but user triggers it explicitly
-# ⚠️  Ask user to confirm before running this:
-git push -f origin main
-```
-
-**Rule**: Always ask the user explicitly before running `git push -f`. Never automate it.
-
----
-
-## Step 5 — ClawHub Publish
-
-### 5.1 Check prerequisites
-
-```bash
-# Verify clawhub CLI is installed
-which clawhub
-
-# Check if logged in (will prompt if not)
-clawhub whoami
-```
-
-### 5.2 Publish
-
-```bash
-cd $SKILL_DIR
-
-clawhub publish $SKILL_DIR \
-  --slug <skill-name> \
-  --name "<Human-Readable Skill Name>" \
-  --version 1.0.0 \
-  --changelog "Initial release: English, generic, <brief description>"
-```
-
-### 5.3 Post-publish verification
-
-```bash
-# Verify it appears on ClawHub
-clawhub search <skill-name>
-
-# Or visit: https://clawhub.com/skills/<skill-name>
-```
-
----
-
-## Common Issues
-
-### "SKILL.md required" error from clawhub publish
-- The skill directory must contain a valid `SKILL.md` file
-- Use absolute path to the skill directory
-
-### GitHub API rate limit exceeded
-- Wait 1–2 minutes and retry
-- Avoid running `git push` + `clawhub publish` in rapid succession
-- Consider setting a separate GitHub token for clawhub
-
-### Push rejected: "Updates were rejected because the remote contains work"
-- The remote repo was initialized with a README or LICENSE
-- Fix: `git pull origin main --allow-unrelated-histories`, resolve conflicts, then push
-
----
-
-## Quality Checklist (Before Publishing)
-
-- [ ] SKILL.md is 100% English
-- [ ] README.md is 100% English with generic examples only
-- [ ] All scripts have English comments/docstrings
-- [ ] Zero proprietary references (drug names, protein names, tokens, emails)
-- [ ] `git push` succeeded without errors
-- [ ] `clawhub publish` succeeded and returned a package ID
-- [ ] ClawHub page is accessible at `https://clawhub.com/skills/<skill-name>`
-
----
-
-*Skill: publish-to-clawhub | For publishing OpenClaw skills to GitHub and ClawHub*
+- pre-publish checklist
+- common errors
+- safe credential guidance
+- suggested commands
